@@ -141,7 +141,7 @@ main { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); g
 .liasse-attente span:nth-child(2) { margin-left: 30px; } .liasse-attente span:nth-child(3) { margin-left: 60px; }
 @keyframes reflet { from { background-position: 100% 0; } to { background-position: -50% 0; } }
 
-.vote-bar { position: sticky; bottom: 16px; z-index: 30; margin-top: 30px; display: flex; align-items: center; gap: 22px; flex-wrap: wrap; background: var(--encre-2); border-radius: 12px; padding: 14px 18px; box-shadow: 0 18px 40px -14px rgba(0,0,0,.8); }
+.vote-bar { position: sticky; top: 12px; z-index: 30; margin-top: 22px; display: flex; align-items: center; gap: 22px; flex-wrap: wrap; background: var(--encre-2); border-radius: 12px; padding: 14px 18px; box-shadow: 0 18px 40px -14px rgba(0,0,0,.8); }
 .toi { font-family: var(--points); font-weight: 800; font-size: 12px; color: var(--gris-texte); letter-spacing: .04em; }
 .toi b { display: block; font-family: var(--display); font-size: 30px; color: var(--canari); letter-spacing: 0; line-height: 1; text-transform: uppercase; }
 .toi button { background: none; border: 0; padding: 0; color: var(--gris-texte); text-decoration: underline; font-size: 11px; }
@@ -250,7 +250,10 @@ kbd { font-family: var(--points); font-weight: 800; font-size: 12px; border: 2px
 
 @media (max-width: 1100px) {
   main { grid-template-columns: minmax(0, 1fr); }
-  .guichet { flex-wrap: wrap; }
+  .guichet { flex-wrap: wrap; row-gap: 14px; }
+  .etat { margin-left: auto; }
+  .choix-seance { order: 1; width: 100%; margin-left: 0; }
+  .choix-seance select { flex: 1; max-width: none; }
 }
 @media (min-width: 700px) and (max-width: 1100px) {
   .tiroir { display: inline-block; }

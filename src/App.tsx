@@ -78,7 +78,9 @@ export function App() {
     try {
       const rows = await chargerSeances();
       const voulu = idDuHash() ?? detail?.id;
-      const id = rows.some((r) => r.id === voulu) ? (voulu as number) : rows.length ? Math.max(...rows.map((r) => r.id)) : null;
+      const trouvee = rows.some((r) => r.id === voulu);
+      const id = trouvee ? (voulu as number) : rows.length ? Math.max(...rows.map((r) => r.id)) : null;
+      if (idDuHash() && !trouvee) setToast({ texte: 'Cette séance n’existe plus : voici la dernière ouverte' });
       if (id) await ouvrir(id);
       else {
         setDetail(null);
@@ -102,10 +104,7 @@ export function App() {
       if (document.visibilityState !== 'visible') return;
       const avant = votesEnvoyes.current;
       const d = await api<Detail>(`/soirees/${id}`).catch(() => null);
-      if (actif && d && avant === votesEnvoyes.current) {
-        setDetail(d);
-        setMaj(Date.now());
-      }
+      if (actif && d && avant === votesEnvoyes.current) montrer(d);
     };
     const minuterie = setInterval(rafraichir, 10000);
     document.addEventListener('visibilitychange', rafraichir);
@@ -134,7 +133,11 @@ export function App() {
 
   useEffect(() => {
     const touche = (e: KeyboardEvent) => {
-      if (gagnant && e.key === 'Escape') fermerRevelation();
+      if (e.key === 'Escape') {
+        if (gagnant) fermerRevelation();
+        else if (ouverture && detail) setOuverture(false);
+        else setVue('seance');
+      }
       if (ouverture || gagnant || e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.target instanceof HTMLElement && e.target.closest('input, textarea, select')) return;
       const verdict = verdicts.find((v) => v.touche === e.key.toLowerCase());
@@ -331,6 +334,31 @@ export function App() {
                 <QuiEsTu membres={detail.membres} votes={detail.votes} films={detail.films.length} onChoisir={choisirMoi} />
               ) : (
                 <>
+                  <div className="vote-bar">
+                    <div className="toi">
+                      TU ES<b>{moi}</b>
+                      <button onClick={() => choisirMoi(null)}>ce n’est pas moi</button>
+                    </div>
+                    <div className="tampons" role="group" aria-label={filmAuGuichet ? `Ton avis sur ${filmAuGuichet.titre}` : 'Aucun film à tamponner'}>
+                      {verdicts.map((v) => (
+                        <button key={v.choix} className="tampon-btn" aria-pressed={avisCourant === v.choix} disabled={!filmAuGuichet} onClick={() => voter(v.choix)}>
+                          {v.libelle}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="kbd" aria-hidden="true">
+                      <kbd>O</kbd>
+                      <kbd>N</kbd>
+                      <kbd>V</kbd>
+                      <kbd>←</kbd>
+                      <kbd>→</kbd>
+                    </div>
+                    {filmAuGuichet && (
+                      <p className="consigne-tour">
+                        {restants ? `Encore ${restants} à tamponner · ` : 'Tout est tamponné · '}« {filmAuGuichet.titre} » au guichet
+                      </p>
+                    )}
+                  </div>
                   {classement.length === 0 ? (
                     <div className="liasse-vide">
                       <strong>Aucun film en lice</strong>
@@ -371,31 +399,6 @@ export function App() {
                       {tout ? 'Replier la liasse' : classement.length === 6 ? '+ 1 autre film' : `+ ${classement.length - 5} autres films`}
                     </button>
                   )}
-                  <div className="vote-bar">
-                    <div className="toi">
-                      TU ES<b>{moi}</b>
-                      <button onClick={() => choisirMoi(null)}>ce n’est pas moi</button>
-                    </div>
-                    <div className="tampons" role="group" aria-label={filmAuGuichet ? `Ton avis sur ${filmAuGuichet.titre}` : 'Aucun film à tamponner'}>
-                      {verdicts.map((v) => (
-                        <button key={v.choix} className="tampon-btn" aria-pressed={avisCourant === v.choix} disabled={!filmAuGuichet} onClick={() => voter(v.choix)}>
-                          {v.libelle}
-                        </button>
-                      ))}
-                    </div>
-                    <div className="kbd" aria-hidden="true">
-                      <kbd>O</kbd>
-                      <kbd>N</kbd>
-                      <kbd>V</kbd>
-                      <kbd>←</kbd>
-                      <kbd>→</kbd>
-                    </div>
-                    {filmAuGuichet && (
-                      <p className="consigne-tour">
-                        {restants ? `Encore ${restants} à tamponner · ` : 'Tout est tamponné · '}« {filmAuGuichet.titre} » au guichet
-                      </p>
-                    )}
-                  </div>
                 </>
               )}
             </>
