@@ -33,10 +33,14 @@ Un serveur Express et une page React. Sur ton poste, la base est un fichier. En 
 
 ## La page
 
-- `src/App.tsx` : le guichet. La soirée, la liasse de tickets classés, les onglets « Qui tamponne ? » et les tampons de vote.
-- `src/types.ts` : les types et le classement : `oui` vaut +1, `non` −1, `vu` 0 ; à égalité, l'identifiant du film départage.
-- `src/Ticket.tsx`, `src/Programme.tsx`, `src/OuvertureSeance.tsx`, `src/Affiche.tsx` : un ticket, le catalogue, le formulaire de soirée, une affiche.
-- Le prénom choisi est gardé dans le navigateur (`localStorage`), une clé par soirée.
+- `src/App.tsx` : le guichet. L'adresse `#/seance/12` ouvre une séance et se partage avec « Copier le lien ».
+- « Qui es-tu ? » (`src/QuiEsTu.tsx`) : chacun vote pour soi ; le prénom est gardé dans le navigateur (`localStorage`), une clé par soirée.
+- La séance se recharge toutes les 10 s et au retour sur l'onglet ; un tampon s'affiche avant la réponse du serveur, et s'efface s'il est refusé.
+- Clavier : `O`, `N`, `V` tamponnent, `←` `→` changent de film.
+- Sur mobile, trois vues : Séance, Voter (`src/Cartes.tsx`, une carte à glisser : → partant, ← pas pour moi, ↑ déjà vu) et Programme. Sur tablette, le programme s'ouvre en tiroir.
+- Quand tout le monde a voté et qu'un film mène, `src/Revelation.tsx` le montre une fois, avec un fichier `.ics` pour l'agenda.
+- `src/types.ts` : les types, les verdicts et le classement : `oui` vaut +1, `non` −1, `vu` 0 ; à égalité, l'identifiant du film départage.
+- `src/Ticket.tsx`, `src/Programme.tsx`, `src/OuvertureSeance.tsx`, `src/Affiche.tsx` : un ticket, le catalogue et ses filtres, le formulaire de soirée, une affiche.
 
 ## Le reste
 

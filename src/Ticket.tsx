@@ -69,7 +69,7 @@ export function Ticket({
       </span>
       <span className="souche">
         <small>SCORE</small>
-        <span className="score">{film.score > 0 ? `+${film.score}` : film.score}</span>
+        <span className="score" key={film.score}>{film.score > 0 ? `+${film.score}` : film.score}</span>
         <span className="avis">
           {membres.map((prenom) => {
             const choix = votes.find((v) => v.filmId === film.id && v.prenom === prenom)?.choix;

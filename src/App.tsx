@@ -1,33 +1,44 @@
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { flushSync } from 'react-dom';
 import { api } from './api';
-import { classer, type Choix, type Detail, type Film, type Soiree } from './types';
+import { classer, verdicts, type Choix, type Detail, type Film, type Soiree } from './types';
 import { Ticket } from './Ticket';
 import { Programme } from './Programme';
 import { OuvertureSeance } from './OuvertureSeance';
+import { QuiEsTu } from './QuiEsTu';
+import { Cartes } from './Cartes';
+import { Revelation } from './Revelation';
 
-const verdicts: { choix: Choix; libelle: string }[] = [
-  { choix: 'oui', libelle: 'Partant' },
-  { choix: 'non', libelle: 'Pas pour moi' },
-  { choix: 'vu', libelle: 'Déjà vu' },
-];
+type Vue = 'seance' | 'voter' | 'programme';
+type Toast = { texte: string; annuler?: () => void };
 
-const heure = () => new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-
+const heure = (t: number) => new Date(t).toLocaleTimeString('fr-FR');
 const enFrancais = (date: string) =>
   new Date(date + 'T00:00:00Z').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
-
+const court = (date: string) =>
+  new Date(date + 'T00:00:00Z').toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
 const cle = (id: number) => `cinematch-moi-${id}`;
+const idDuHash = () => Number(location.hash.match(/^#\/seance\/(\d+)$/)?.[1]) || null;
+const message = (e: unknown) => (e instanceof Error && !(e instanceof TypeError) ? e.message : 'Connexion impossible. Réessayez.');
+const revelees = (): number[] => JSON.parse(localStorage.getItem('cinematch-revelees') ?? '[]');
+const aujourdhui = () => new Date().toISOString().slice(0, 10);
 
 export function App() {
   const [catalogue, setCatalogue] = useState<Film[] | null>(null);
   const [soirees, setSoirees] = useState<Soiree[]>([]);
   const [detail, setDetail] = useState<Detail | null>(null);
+  const [pret, setPret] = useState(false);
   const [ouverture, setOuverture] = useState<false | 'nouvelle' | 'modifier'>(false);
-  const [participant, setParticipant] = useState('');
+  const [moi, setMoi] = useState<string | null>(null);
   const [choisi, setChoisi] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [horloge, setHorloge] = useState(heure);
+  const [maj, setMaj] = useState<number | null>(null);
+  const [toast, setToast] = useState<Toast | null>(null);
+  const [vue, setVue] = useState<Vue>('seance');
+  const [tout, setTout] = useState(false);
+  const [vues, setVues] = useState(revelees);
+  const votesEnvoyes = useRef(0);
 
   const classement = useMemo(() => (detail ? classer(detail.films, detail.votes) : []), [detail]);
 
@@ -37,7 +48,7 @@ export function App() {
     try {
       await action();
     } catch (e) {
-      setError(e instanceof Error && !(e instanceof TypeError) ? e.message : 'Connexion impossible. Réessayez.');
+      setError(message(e));
     } finally {
       setBusy(false);
     }
@@ -51,19 +62,30 @@ export function App() {
     setSoirees(rows);
     return rows;
   }
+  function montrer(d: Detail) {
+    const garde = localStorage.getItem(cle(d.id));
+    setDetail(d);
+    setMoi(garde && d.membres.includes(garde) ? garde : null);
+    setMaj(Date.now());
+  }
   async function ouvrir(id: number) {
     const d = await api<Detail>(`/soirees/${id}`);
-    const garde = localStorage.getItem(cle(id));
-    setDetail(d);
-    setParticipant(garde && d.membres.includes(garde) ? garde : d.membres[0]);
+    history.replaceState(null, '', `#/seance/${id}`);
+    if (detail && detail.id !== d.id && document.startViewTransition) document.startViewTransition(() => flushSync(() => montrer(d)));
+    else montrer(d);
   }
   async function demarrer() {
-    const rows = await chargerSeances();
-    const affichee = rows.find((r) => r.id === detail?.id);
-    if (rows.length) await ouvrir(affichee?.id ?? Math.max(...rows.map((r) => r.id)));
-    else {
-      setDetail(null);
-      setOuverture('nouvelle');
+    try {
+      const rows = await chargerSeances();
+      const voulu = idDuHash() ?? detail?.id;
+      const id = rows.some((r) => r.id === voulu) ? (voulu as number) : rows.length ? Math.max(...rows.map((r) => r.id)) : null;
+      if (id) await ouvrir(id);
+      else {
+        setDetail(null);
+        setOuverture('nouvelle');
+      }
+    } finally {
+      setPret(true);
     }
     await chercher('');
   }
@@ -71,47 +93,122 @@ export function App() {
   useEffect(() => {
     void run(demarrer);
   }, []);
-  useEffect(() => {
-    const minuterie = setInterval(() => setHorloge(heure()), 30000);
-    return () => clearInterval(minuterie);
-  }, []);
 
-  const aVote = (filmId: number) => detail?.votes.some((v) => v.filmId === filmId && v.prenom === participant);
+  useEffect(() => {
+    if (!detail || ouverture) return;
+    const id = detail.id;
+    let actif = true;
+    const rafraichir = async () => {
+      if (document.visibilityState !== 'visible') return;
+      const avant = votesEnvoyes.current;
+      const d = await api<Detail>(`/soirees/${id}`).catch(() => null);
+      if (actif && d && avant === votesEnvoyes.current) {
+        setDetail(d);
+        setMaj(Date.now());
+      }
+    };
+    const minuterie = setInterval(rafraichir, 10000);
+    document.addEventListener('visibilitychange', rafraichir);
+    return () => {
+      actif = false;
+      clearInterval(minuterie);
+      document.removeEventListener('visibilitychange', rafraichir);
+    };
+  }, [detail?.id, ouverture]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const minuterie = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(minuterie);
+  }, [toast]);
+
+  const aVote = (filmId: number) => detail?.votes.some((v) => v.filmId === filmId && v.prenom === moi);
   const filmAuGuichet = classement.find((f) => f.id === choisi) ?? classement.find((f) => !aVote(f.id)) ?? classement[0];
-  const avisCourant = detail?.votes.find((v) => v.filmId === filmAuGuichet?.id && v.prenom === participant)?.choix;
+  const avisCourant = detail?.votes.find((v) => v.filmId === filmAuGuichet?.id && v.prenom === moi)?.choix;
+  const restants = moi ? classement.filter((f) => !aVote(f.id)).length : 0;
 
   const tousLesAvis = classement.length > 0 && classement.every((f) => f.nombre === detail?.membres.length);
   const enTete = classement.length === 1 || (classement.length > 1 && classement[0].score > classement[1].score);
   const tampon = !enTete || classement[0].score <= 0 ? null : tousLesAvis ? 'Séance retenue' : 'En tête';
+  const gagnant = detail && !ouverture && tampon === 'Séance retenue' && !vues.includes(detail.id) ? classement[0] : null;
 
-  function choisirParticipant(prenom: string) {
-    if (detail) localStorage.setItem(cle(detail.id), prenom);
-    setParticipant(prenom);
+  useEffect(() => {
+    const touche = (e: KeyboardEvent) => {
+      if (gagnant && e.key === 'Escape') fermerRevelation();
+      if (ouverture || gagnant || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.target instanceof HTMLElement && e.target.closest('input, textarea, select')) return;
+      const verdict = verdicts.find((v) => v.touche === e.key.toLowerCase());
+      if (verdict) voter(verdict.choix);
+      const pas = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+      if (pas && filmAuGuichet) {
+        const i = classement.findIndex((f) => f.id === filmAuGuichet.id);
+        setChoisi(classement[(i + pas + classement.length) % classement.length].id);
+      }
+    };
+    const suivre = () => {
+      const id = idDuHash();
+      if (id && id !== detail?.id) changerSeance(id);
+    };
+    window.addEventListener('keydown', touche);
+    window.addEventListener('hashchange', suivre);
+    return () => {
+      window.removeEventListener('keydown', touche);
+      window.removeEventListener('hashchange', suivre);
+    };
+  });
+
+  function fermerRevelation() {
+    if (!detail) return;
+    const ids = [...vues, detail.id];
+    localStorage.setItem('cinematch-revelees', JSON.stringify(ids));
+    setVues(ids);
+  }
+  function choisirMoi(prenom: string | null) {
+    if (!detail) return;
+    if (prenom) localStorage.setItem(cle(detail.id), prenom);
+    else localStorage.removeItem(cle(detail.id));
+    setMoi(prenom);
     setChoisi(null);
   }
   function voter(choix: Choix) {
-    if (!detail || !filmAuGuichet) return;
+    if (!detail || !filmAuGuichet || !moi) return;
+    const avant = detail;
     const film = filmAuGuichet;
-    void run(async () => {
-      await api(`/soirees/${detail.id}/films/${film.id}/vote`, 'PUT', { prenom: participant, choix });
-      await ouvrir(detail.id);
-      setChoisi(null);
+    setDetail({ ...detail, votes: [...detail.votes.filter((v) => !(v.filmId === film.id && v.prenom === moi)), { filmId: film.id, prenom: moi, choix }] });
+    setChoisi(null);
+    votesEnvoyes.current += 1;
+    api(`/soirees/${detail.id}/films/${film.id}/vote`, 'PUT', { prenom: moi, choix }).catch((e) => {
+      setDetail(avant);
+      setError(`Ton tampon sur « ${film.titre} » n’est pas parti. ${message(e)}`);
     });
   }
-  function ajouter(filmId: number) {
+  function ajouter(film: Film) {
     if (!detail) return;
+    const id = detail.id;
     void run(async () => {
-      await api(`/soirees/${detail.id}/films`, 'POST', { filmId });
-      await ouvrir(detail.id);
+      await api(`/soirees/${id}/films`, 'POST', { filmId: film.id });
+      await ouvrir(id);
+      setToast({ texte: `${film.titre} ajouté`, annuler: () => retirer(film) });
+      if (vue === 'programme' && matchMedia('(min-width: 700px)').matches) setVue('seance');
     });
   }
-  function retirer(filmId: number) {
+  function retirer(film: Film) {
     if (!detail) return;
+    const id = detail.id;
     void run(async () => {
-      await api(`/soirees/${detail.id}/films/${filmId}`, 'DELETE');
-      await ouvrir(detail.id);
-      if (choisi === filmId) setChoisi(null);
+      await api(`/soirees/${id}/films/${film.id}`, 'DELETE');
+      await ouvrir(id);
+      if (choisi === film.id) setChoisi(null);
+      setToast({ texte: `${film.titre} retiré, avec ses avis` });
     });
+  }
+  async function partager() {
+    if (navigator.share && matchMedia('(pointer: coarse)').matches) await navigator.share({ title: detail?.nom, url: location.href }).catch(() => null);
+    else
+      await navigator.clipboard.writeText(location.href).then(
+        () => setToast({ texte: 'Lien copié : envoie-le au groupe' }),
+        () => setToast({ texte: `Le lien : ${location.href}` }),
+      );
   }
   function ouvrirSeance(nom: string, date: string, membres: string[]) {
     const modifiee = ouverture === 'modifier' && detail;
@@ -121,6 +218,7 @@ export function App() {
       await ouvrir(row.id);
       setOuverture(false);
       setChoisi(null);
+      setVue('seance');
     });
   }
   function changerSeance(id: number) {
@@ -129,11 +227,26 @@ export function App() {
       await ouvrir(id);
       setOuverture(false);
       setChoisi(null);
+      setTout(false);
     });
+  }
+  function ouvrirFormulaire(mode: 'nouvelle' | 'modifier') {
+    setOuverture(mode);
+    setVue('seance');
+  }
+  function choisirFilm(id: number) {
+    setChoisi(id);
+    if (matchMedia('(max-width: 699px)').matches) setVue('voter');
   }
 
   const numero = detail ? String(detail.id).padStart(4, '0') : '';
   const papier = (id: number) => Math.max(0, detail?.films.findIndex((f) => f.id === id) ?? 0);
+  const visibles = tout ? classement : classement.slice(0, 5);
+  const boutonLien = (
+    <button className="partager" disabled={!detail || busy} onClick={() => void run(partager)}>
+      Copier le lien
+    </button>
+  );
 
   return (
     <>
@@ -148,35 +261,41 @@ export function App() {
         <a className="marque" href="#seance">
           Ciné<span>Match</span>
         </a>
-        <nav className="nav" aria-label="Sections">
-          <a href="#seance">La séance</a>
-          <a href="#programme">Programme</a>
-        </nav>
         <div className="choix-seance">
           <select aria-label="Choisir une séance" value={detail?.id ?? ''} disabled={busy || soirees.length === 0} onChange={(e) => changerSeance(Number(e.target.value))}>
             {soirees.length === 0 && <option value="">Aucune séance</option>}
             {soirees.map((s) => (
               <option key={s.id} value={s.id}>
-                {s.nom}
+                {s.nom} · {court(s.date)}
               </option>
             ))}
           </select>
-          <button className="nouvelle" onClick={() => setOuverture('nouvelle')}>
+          {boutonLien}
+          <button className="nouvelle" onClick={() => ouvrirFormulaire('nouvelle')}>
             Nouvelle séance
           </button>
+          <button className="nouvelle tiroir" aria-pressed={vue === 'programme'} onClick={() => setVue(vue === 'programme' ? 'seance' : 'programme')}>
+            Programme
+          </button>
         </div>
-        <div className="etat">GUICHET OUVERT · {horloge}</div>
+        <div className={`etat${maj ? ' direct' : ''}`}>{maj ? `EN DIRECT · ${heure(maj)}` : 'GUICHET OUVERT'}</div>
       </header>
 
-      <main>
+      {error && (
+        <div role="alert" className="alerte">
+          {error}
+          <button onClick={() => void run(demarrer)}>Réessayer</button>
+        </div>
+      )}
+      <main data-vue={vue}>
         <section className="seance" id="seance" aria-label="La séance">
-          {error && (
-            <div role="alert" className="alerte">
-              {error}
-              <button onClick={() => void run(demarrer)}>Réessayer</button>
+          {!pret ? (
+            <div className="squelettes liasse-attente" aria-label="Chargement de la séance">
+              <span />
+              <span />
+              <span />
             </div>
-          )}
-          {ouverture || !detail ? (
+          ) : ouverture || !detail ? (
             <OuvertureSeance
               key={ouverture || 'nouvelle'}
               seance={ouverture === 'modifier' && detail ? detail : undefined}
@@ -188,78 +307,160 @@ export function App() {
           ) : (
             <>
               <p className="seance-meta">
-                SÉANCE N° {numero} · {enFrancais(detail.date).toUpperCase()} · {detail.films.length} FILM
-                {detail.films.length > 1 ? 'S' : ''} EN LICE
+                SÉANCE N° {numero} · {enFrancais(detail.date).toUpperCase()}
+                {detail.date < aujourdhui() && ' · PASSÉE'} · {detail.films.length} FILM{detail.films.length > 1 ? 'S' : ''} EN LICE
               </p>
               <h1>{detail.nom}</h1>
-              <p className="membres">
-                {detail.membres.map((m) => (
-                  <span key={m}>
-                    <b>{m}</b>
-                  </span>
-                ))}
-                <button onClick={() => setOuverture('modifier')}>Modifier</button>
-              </p>
-              {classement.length === 0 ? (
-                <div className="liasse-vide">
-                  <strong>Aucun film en lice</strong>
-                  Ajoutez des films depuis le programme : chacun deviendra un ticket à tamponner.
-                </div>
-              ) : (
-                <div className="liasse" style={{ '--n': classement.length } as CSSProperties}>
-                  {[...classement].reverse().map((film, position) => (
-                    <Ticket
-                      key={film.id}
-                      film={film}
-                      rang={classement.length - position}
-                      position={position}
-                      total={classement.length}
-                      papier={papier(film.id)}
-                      membres={detail.membres}
-                      votes={detail.votes}
-                      seance={numero}
-                      auGuichet={film.id === filmAuGuichet?.id}
-                      tampon={position === classement.length - 1 ? tampon : null}
-                      onChoisir={() => setChoisi(film.id)}
-                    />
-                  ))}
-                </div>
-              )}
-              <div className="tour">
-                <div className="onglets" role="group" aria-label="Qui tamponne ?">
-                  {detail.membres.map((m, i) => (
-                    <button key={m} className={`onglet m${i + 1}`} aria-pressed={participant === m} onClick={() => choisirParticipant(m)}>
-                      {m}
-                    </button>
-                  ))}
-                </div>
-                <div className="tampons" role="group" aria-label={filmAuGuichet ? `Avis de ${participant} sur ${filmAuGuichet.titre}` : 'Aucun film à tamponner'}>
-                  {verdicts.map((v) => (
-                    <button key={v.choix} className="tampon-btn" aria-pressed={avisCourant === v.choix} disabled={busy || !filmAuGuichet} onClick={() => voter(v.choix)}>
-                      {v.libelle}
-                    </button>
-                  ))}
-                </div>
-                {filmAuGuichet && (
-                  <p className="consigne-tour">
-                    <b>{participant}</b> tamponne « {filmAuGuichet.titre} »
-                  </p>
-                )}
+              <div className="progres">
+                {detail.membres.map((m, i) => {
+                  const n = detail.votes.filter((v) => v.prenom === m).length;
+                  const fini = detail.films.length > 0 && n === detail.films.length;
+                  return (
+                    <span key={m} className={`membre-p${fini ? ' fini' : ''}${n === 0 ? ' attente' : ''}${m === moi ? ' moi' : ''}`}>
+                      <b className={`p${i + 1}`}>{m[0]}</b>
+                      {m.toUpperCase()} {detail.films.length > 0 && (n === 0 ? '· EN ATTENTE' : `${n}/${detail.films.length}`)}
+                      {fini && ' ✓'}
+                    </span>
+                  );
+                })}
+                <button className="membre-p modifier" onClick={() => ouvrirFormulaire('modifier')}>
+                  MODIFIER
+                </button>
               </div>
+              {!moi ? (
+                <QuiEsTu membres={detail.membres} votes={detail.votes} films={detail.films.length} onChoisir={choisirMoi} />
+              ) : (
+                <>
+                  {classement.length === 0 ? (
+                    <div className="liasse-vide">
+                      <strong>Aucun film en lice</strong>
+                      <ol className="etapes">
+                        <li className="ok">Ouvrir la séance</li>
+                        <li>
+                          Proposer 2 ou 3 films du{' '}
+                          <button className="lien" onClick={() => setVue('programme')}>
+                            programme
+                          </button>
+                        </li>
+                        <li>Envoyer le lien au groupe</li>
+                      </ol>
+                      {boutonLien}
+                    </div>
+                  ) : (
+                    <div className="liasse" style={{ '--n': visibles.length } as CSSProperties}>
+                      {[...visibles].reverse().map((film, position) => (
+                        <Ticket
+                          key={film.id}
+                          film={film}
+                          rang={visibles.length - position}
+                          position={position}
+                          total={visibles.length}
+                          papier={papier(film.id)}
+                          membres={detail.membres}
+                          votes={detail.votes}
+                          seance={numero}
+                          auGuichet={film.id === filmAuGuichet?.id}
+                          tampon={position === visibles.length - 1 ? tampon : null}
+                          onChoisir={() => choisirFilm(film.id)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                  {classement.length > 5 && (
+                    <button className="plus" onClick={() => setTout(!tout)}>
+                      {tout ? 'Replier la liasse' : classement.length === 6 ? '+ 1 autre film' : `+ ${classement.length - 5} autres films`}
+                    </button>
+                  )}
+                  <div className="vote-bar">
+                    <div className="toi">
+                      TU ES<b>{moi}</b>
+                      <button onClick={() => choisirMoi(null)}>ce n’est pas moi</button>
+                    </div>
+                    <div className="tampons" role="group" aria-label={filmAuGuichet ? `Ton avis sur ${filmAuGuichet.titre}` : 'Aucun film à tamponner'}>
+                      {verdicts.map((v) => (
+                        <button key={v.choix} className="tampon-btn" aria-pressed={avisCourant === v.choix} disabled={!filmAuGuichet} onClick={() => voter(v.choix)}>
+                          {v.libelle}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="kbd" aria-hidden="true">
+                      <kbd>O</kbd>
+                      <kbd>N</kbd>
+                      <kbd>V</kbd>
+                      <kbd>←</kbd>
+                      <kbd>→</kbd>
+                    </div>
+                    {filmAuGuichet && (
+                      <p className="consigne-tour">
+                        {restants ? `Encore ${restants} à tamponner · ` : 'Tout est tamponné · '}« {filmAuGuichet.titre} » au guichet
+                      </p>
+                    )}
+                  </div>
+                </>
+              )}
             </>
           )}
         </section>
 
+        <section className="cartes-vue" aria-label="Voter">
+          {detail &&
+            !ouverture &&
+            (moi ? (
+              <Cartes
+                classement={classement}
+                film={filmAuGuichet}
+                avis={avisCourant}
+                moi={moi}
+                votes={detail.votes}
+                papier={papier}
+                onVoter={voter}
+                onChoisir={setChoisi}
+              />
+            ) : (
+              <QuiEsTu membres={detail.membres} votes={detail.votes} films={detail.films.length} onChoisir={choisirMoi} />
+            ))}
+        </section>
+
         <Programme
           films={catalogue}
-          enLice={detail?.films.map((f) => f.id) ?? []}
+          enLice={detail?.films ?? []}
           peutModifier={!!detail && !ouverture}
           busy={busy}
           onChercher={(titre) => void run(() => chercher(titre))}
           onAjouter={ajouter}
           onRetirer={retirer}
+          onFermer={() => setVue('seance')}
         />
       </main>
+
+      <nav className="onglets-bas" aria-label="Vues">
+        <button aria-pressed={vue === 'seance'} onClick={() => setVue('seance')}>
+          Séance
+        </button>
+        <button aria-pressed={vue === 'voter'} onClick={() => setVue('voter')}>
+          Voter {restants > 0 && <sup>{restants}</sup>}
+        </button>
+        <button aria-pressed={vue === 'programme'} onClick={() => setVue('programme')}>
+          Programme
+        </button>
+      </nav>
+
+      {toast && (
+        <div className="toast" role="status" key={toast.texte}>
+          {toast.texte}
+          {toast.annuler && (
+            <button
+              onClick={() => {
+                toast.annuler?.();
+                setToast(null);
+              }}
+            >
+              Annuler
+            </button>
+          )}
+        </div>
+      )}
+      {gagnant && detail && <Revelation film={gagnant} seance={detail} onFermer={fermerRevelation} />}
     </>
   );
 }
