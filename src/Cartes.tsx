@@ -32,6 +32,8 @@ export function Cartes({
 }) {
   const depart = useRef<{ x: number; y: number } | null>(null);
   const [d, setD] = useState({ x: 0, y: 0 });
+  const [envol, setEnvol] = useState<{ x: number; y: number; choix: Choix } | null>(null);
+  const seuilAtteint = useRef<Choix | null>(null);
   const carte = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const element = carte.current;
@@ -43,7 +45,7 @@ export function Cartes({
   if (!film) return <p className="cartes-vide">Aucun film en lice. Ajoute-en depuis le programme.</p>;
 
   const fait = (id: number) => votes.some((v) => v.filmId === id && v.prenom === moi);
-  const marque = sens(d.x, d.y) ?? avis;
+  const marque = envol?.choix ?? sens(d.x, d.y) ?? avis;
   const glisse = d.x !== 0 || d.y !== 0;
   const restants = films.filter((f) => !fait(f.id)).length;
   const position = films.findIndex((f) => f.id === film.id) + 1;
@@ -51,9 +53,20 @@ export function Cartes({
   function lacher(e: PointerEvent<HTMLDivElement>, compte: boolean) {
     const debut = depart.current;
     depart.current = null;
-    setD({ x: 0, y: 0 });
-    const choix = debut && compte ? sens(e.clientX - debut.x, e.clientY - debut.y) : null;
-    if (choix) onVoter(choix);
+    seuilAtteint.current = null;
+    const dx = debut ? e.clientX - debut.x : 0;
+    const dy = debut ? e.clientY - debut.y : 0;
+    const choix = compte ? sens(dx, dy) : null;
+    if (!choix) {
+      setD({ x: 0, y: 0 });
+      return;
+    }
+    setEnvol({ x: choix === 'vu' ? dx : Math.sign(dx) * 700, y: choix === 'vu' ? -900 : dy - 160, choix });
+    setTimeout(() => {
+      setEnvol(null);
+      setD({ x: 0, y: 0 });
+      onVoter(choix);
+    }, 280);
   }
 
   return (
@@ -80,16 +93,26 @@ export function Cartes({
           ref={carte}
           style={{
             '--stock': papiers[papier(film.id) % 4],
-            transform: `translate(${d.x}px, ${Math.min(d.y, 0)}px) rotate(${d.x / 18}deg)`,
-            transition: glisse ? 'none' : undefined,
+            transform: envol
+              ? `translate(${envol.x}px, ${envol.y}px) rotate(${envol.x / 12}deg)`
+              : `translate(${d.x}px, ${Math.min(d.y, 0)}px) rotate(${d.x / 14}deg)`,
+            transition: envol ? 'transform .3s cubic-bezier(.5, 0, .8, .6), opacity .3s' : glisse ? 'none' : undefined,
+            opacity: envol ? 0 : undefined,
           } as CSSProperties}
           onPointerDown={(e) => {
+            if (envol) return;
             e.currentTarget.setPointerCapture(e.pointerId);
             depart.current = { x: e.clientX, y: e.clientY };
           }}
           onPointerMove={(e) => {
             const debut = depart.current;
-            if (debut) setD({ x: e.clientX - debut.x, y: e.clientY - debut.y });
+            if (!debut) return;
+            const x = e.clientX - debut.x;
+            const y = e.clientY - debut.y;
+            const choix = sens(x, y);
+            if (choix && choix !== seuilAtteint.current) navigator.vibrate?.(10);
+            seuilAtteint.current = choix;
+            setD({ x, y });
           }}
           onPointerUp={(e) => lacher(e, true)}
           onPointerCancel={(e) => lacher(e, false)}

@@ -38,6 +38,7 @@ Un serveur Express et une page React. Sur ton poste, la base est un fichier. En 
 - La séance se recharge toutes les 10 s et au retour sur l'onglet ; un tampon s'affiche avant la réponse du serveur, et s'efface s'il est refusé.
 - Clavier : `O`, `N`, `V` tamponnent, `←` `→` changent de film.
 - Sur mobile, trois vues : Séance, Voter (`src/Cartes.tsx`, une carte à glisser : → partant, ← pas pour moi, ↑ déjà vu) et Programme. Sur tablette, le programme s'ouvre en tiroir.
+- À la première ouverture de la visite, `src/Rideau.tsx` lève un rideau de cinéma pendant que le titre arrive lettre à lettre ; rien de tout cela avec « réduire les animations ».
 - Quand tout le monde a voté et qu'un film mène, `src/Revelation.tsx` le montre une fois, avec un fichier `.ics` pour l'agenda.
 - `src/types.ts` : les types, les verdicts et le classement : `oui` vaut +1, `non` −1, `vu` 0 ; à égalité, l'identifiant du film départage.
 - `src/Ticket.tsx`, `src/Programme.tsx`, `src/OuvertureSeance.tsx`, `src/Affiche.tsx` : un ticket, le catalogue et ses filtres, le formulaire de soirée, une affiche.

@@ -8,6 +8,7 @@ import { OuvertureSeance } from './OuvertureSeance';
 import { QuiEsTu } from './QuiEsTu';
 import { Cartes } from './Cartes';
 import { Revelation } from './Revelation';
+import { Rideau } from './Rideau';
 
 type Vue = 'seance' | 'voter' | 'programme';
 type Toast = { texte: string; annuler?: () => void };
@@ -38,6 +39,7 @@ export function App() {
   const [vue, setVue] = useState<Vue>('seance');
   const [tout, setTout] = useState(false);
   const [vues, setVues] = useState(revelees);
+  const [rideau, setRideau] = useState(() => !sessionStorage.getItem('cinematch-rideau') && !matchMedia('(prefers-reduced-motion: reduce)').matches);
   const votesEnvoyes = useRef(0);
 
   const classement = useMemo(() => (detail ? classer(detail.films, detail.votes) : []), [detail]);
@@ -95,6 +97,13 @@ export function App() {
   useEffect(() => {
     void run(demarrer);
   }, []);
+
+  useEffect(() => {
+    if (!rideau || !pret) return;
+    sessionStorage.setItem('cinematch-rideau', '1');
+    const minuterie = setTimeout(() => setRideau(false), 3200);
+    return () => clearTimeout(minuterie);
+  }, [rideau, pret]);
 
   useEffect(() => {
     if (!detail || ouverture) return;
@@ -290,7 +299,7 @@ export function App() {
           <button onClick={() => void run(demarrer)}>Réessayer</button>
         </div>
       )}
-      <main data-vue={vue}>
+      <main data-vue={vue} style={{ '--retard': rideau ? '1.4s' : '0s' } as CSSProperties}>
         <section className="seance" id="seance" aria-label="La séance">
           {!pret ? (
             <div className="squelettes liasse-attente" aria-label="Chargement de la séance">
@@ -313,7 +322,23 @@ export function App() {
                 SÉANCE N° {numero} · {enFrancais(detail.date).toUpperCase()}
                 {detail.date < aujourdhui() && ' · PASSÉE'} · {detail.films.length} FILM{detail.films.length > 1 ? 'S' : ''} EN LICE
               </p>
-              <h1>{detail.nom}</h1>
+              <h1 key={detail.id} aria-label={detail.nom}>
+                {detail.nom.split(' ').map((mot, m, mots) => {
+                  const debut = mots.slice(0, m).join(' ').length + (m ? 1 : 0);
+                  return (
+                    <span key={m} aria-hidden="true">
+                      <span className="mot">
+                        {[...mot].map((lettre, l) => (
+                          <span key={l} style={{ '--i': debut + l } as CSSProperties}>
+                            {lettre}
+                          </span>
+                        ))}
+                      </span>
+                      {m < mots.length - 1 && ' '}
+                    </span>
+                  );
+                })}
+              </h1>
               <div className="progres">
                 {detail.membres.map((m, i) => {
                   const n = detail.votes.filter((v) => v.prenom === m).length;
@@ -466,6 +491,7 @@ export function App() {
         </div>
       )}
       {gagnant && detail && <Revelation film={gagnant} seance={detail} onFermer={fermerRevelation} />}
+      {rideau && <Rideau leve={pret} />}
     </>
   );
 }
