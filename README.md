@@ -42,6 +42,13 @@ Un serveur Express et une page React. Sur ton poste, la base est un fichier. En 
 - `src/types.ts` : les types, les verdicts et le classement : `oui` vaut +1, `non` −1, `vu` 0 ; à égalité, l'identifiant du film départage.
 - `src/Ticket.tsx`, `src/Programme.tsx`, `src/OuvertureSeance.tsx`, `src/Affiche.tsx` : un ticket, le catalogue et ses filtres, le formulaire de soirée, une affiche.
 
+## Les tests de bout en bout
+
+- `npm run e2e` : Playwright lance sa propre API sur le port 3100, avec une base jetable `e2e/e2e.db` (jamais Turso), et Vite sur le port 5199, puis rejoue les parcours dans le Chrome du poste.
+- `e2e/bureau.spec.ts` : créer, voter aux boutons et au clavier, lien partagé, modifier, retirer, rafraîchissement, révélation, vote refusé, recherche, tiroir tablette.
+- `e2e/mobile.spec.ts` : vrais gestes tactiles (glisser vite, glisser peu, vers le haut), boutons ronds, onglets, ajout et modification sur mobile.
+- Il faut un `.env` avec `TMDB_TOKEN` : l'ajout de films interroge TMDB.
+
 ## Le reste
 
 - `.gitignore` : `node_modules`, `dist`, `.env` et les bases `*.db` ne partent jamais sur GitHub.

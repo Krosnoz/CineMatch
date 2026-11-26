@@ -218,4 +218,5 @@ app.put('/api/soirees/:id/films/:filmId/vote', async (req, res) => {
 });
 
 export default app;
-if (!process.env.VERCEL) app.listen(3000, () => console.log('CinéMatch : http://localhost:3000/api/sante'));
+const port = Number(process.env.PORT) || 3000;
+if (!process.env.VERCEL) app.listen(port, () => console.log(`CinéMatch : http://localhost:${port}/api/sante`));

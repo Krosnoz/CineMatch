@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { flushSync } from 'react-dom';
 import { api } from './api';
-import { classer, verdicts, type Choix, type Detail, type Film, type Soiree } from './types';
+import { classer, verdicts, type Choix, type Detail, type Film, type Soiree, type Vote } from './types';
 import { Ticket } from './Ticket';
 import { Programme } from './Programme';
 import { OuvertureSeance } from './OuvertureSeance';
@@ -175,13 +175,14 @@ export function App() {
   }
   function voter(choix: Choix) {
     if (!detail || !filmAuGuichet || !moi) return;
-    const avant = detail;
     const film = filmAuGuichet;
-    setDetail({ ...detail, votes: [...detail.votes.filter((v) => !(v.filmId === film.id && v.prenom === moi)), { filmId: film.id, prenom: moi, choix }] });
+    const autres = (v: Vote) => !(v.filmId === film.id && v.prenom === moi);
+    const ancien = detail.votes.filter((v) => !autres(v));
+    setDetail((d) => d && { ...d, votes: [...d.votes.filter(autres), { filmId: film.id, prenom: moi, choix }] });
     setChoisi(null);
     votesEnvoyes.current += 1;
     api(`/soirees/${detail.id}/films/${film.id}/vote`, 'PUT', { prenom: moi, choix }).catch((e) => {
-      setDetail(avant);
+      setDetail((d) => d && { ...d, votes: [...d.votes.filter(autres), ...ancien] });
       setError(`Ton tampon sur « ${film.titre} » n’est pas parti. ${message(e)}`);
     });
   }
