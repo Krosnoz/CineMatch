@@ -33,6 +33,26 @@ test('voter avec les boutons et le clavier, puis retrouver les votes après rech
   await expect(page.locator('.membre-p.moi')).toContainText('3/3');
 });
 
+test('au clavier, la pile tourne en boucle et permet de changer d’avis', async ({ page, request }) => {
+  const id = await creerSeance(request);
+  await ouvrir(page, id, 'Alex');
+  const consigne = page.locator('.consigne-tour');
+  await expect(consigne).toContainText('« Dune »');
+  await page.keyboard.press('ArrowLeft');
+  await expect(consigne).toContainText('« Inception »');
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('o');
+  await page.keyboard.press('o');
+  await page.keyboard.press('o');
+  await expect(consigne).toContainText('Tout est tamponné');
+  await expect(consigne).toContainText('« Dune »');
+  await page.keyboard.press('n');
+  await expect(consigne).toContainText('« Dune : Deuxième partie »');
+  await expect.poll(async () => (await votesDe(request, id, 'Alex')).map((v) => `${v.filmId}:${v.choix}`).sort()).toEqual(
+    [`${films.dune}:non`, `${films.dune2}:oui`, `${films.inception}:oui`].sort(),
+  );
+});
+
 test('changer d’avis sur un film choisi dans la liasse', async ({ page, request }) => {
   const id = await creerSeance(request);
   await ouvrir(page, id, 'Alex');

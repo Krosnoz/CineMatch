@@ -8,8 +8,10 @@ const libelle = (choix: Choix) => verdicts.find((v) => v.choix === choix)?.libel
 const sens = (x: number, y: number): Choix | null => (x > seuil ? 'oui' : x < -seuil ? 'non' : y < -seuil ? 'vu' : null);
 
 export function Cartes({
-  classement,
+  films,
   film,
+  suivant,
+  rang,
   avis,
   moi,
   votes,
@@ -17,8 +19,10 @@ export function Cartes({
   onVoter,
   onChoisir,
 }: {
-  classement: Classe[];
+  films: Classe[];
   film?: Classe;
+  suivant?: Classe;
+  rang: number;
   avis?: Choix;
   moi: string;
   votes: Vote[];
@@ -41,9 +45,8 @@ export function Cartes({
   const fait = (id: number) => votes.some((v) => v.filmId === id && v.prenom === moi);
   const marque = sens(d.x, d.y) ?? avis;
   const glisse = d.x !== 0 || d.y !== 0;
-  const restants = classement.filter((f) => !fait(f.id)).length;
-  const suivant = classement.find((f) => f.id !== film.id && !fait(f.id));
-  const rang = classement.findIndex((f) => f.id === film.id) + 1;
+  const restants = films.filter((f) => !fait(f.id)).length;
+  const position = films.findIndex((f) => f.id === film.id) + 1;
 
   function lacher(e: PointerEvent<HTMLDivElement>, compte: boolean) {
     const debut = depart.current;
@@ -56,15 +59,17 @@ export function Cartes({
   return (
     <div className="cartes">
       <div className="cartes-haut">
-        <span>{restants ? `${restants} À TAMPONNER` : 'TOUT EST TAMPONNÉ'}</span>
+        <span>
+          FILM {position}/{films.length} · {restants ? `${restants} À TAMPONNER` : 'TOUT EST TAMPONNÉ'}
+        </span>
         <span className="points">
-          {classement.map((f) => (
+          {films.map((f) => (
             <button key={f.id} aria-label={f.titre} className={`${fait(f.id) ? 'fait' : ''}${f.id === film.id ? ' ici' : ''}`} onClick={() => onChoisir(f.id)} />
           ))}
         </span>
       </div>
       <div className="pile">
-        {suivant && (
+        {suivant && suivant.id !== film.id && (
           <div className="carte dessous" key={`dessous-${suivant.id}`} style={{ '--stock': papiers[papier(suivant.id) % 4] } as CSSProperties}>
             <Affiche film={suivant} />
           </div>

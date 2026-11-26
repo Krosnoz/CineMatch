@@ -32,6 +32,25 @@ test('glisser à gauche puis vers le haut enregistre « pas pour moi » et « d�
   await expect(page.locator('.cartes-haut')).toContainText('TOUT EST TAMPONNÉ');
 });
 
+test('la pile tourne en boucle : après le dernier film on revient au premier et on change son avis', async ({ page, request }) => {
+  const id = await creerSeance(request);
+  await ouvrir(page, id, 'Alex');
+  await allerVoter(page);
+  await expect(titre(page)).toHaveText('Dune');
+  await glisser(page, carte(page), -220, 0);
+  await expect(titre(page)).toHaveText('Dune : Deuxième partie');
+  await glisser(page, carte(page), -220, 0);
+  await expect(titre(page)).toHaveText('Inception');
+  await glisser(page, carte(page), -220, 0);
+  await expect(titre(page)).toHaveText('Dune');
+  await expect(page.locator('.carte.dessous')).toBeVisible();
+  await glisser(page, carte(page), 220, 0);
+  await expect(titre(page)).toHaveText('Dune : Deuxième partie');
+  await expect.poll(async () => (await votesDe(request, id, 'Alex')).map((v) => `${v.filmId}:${v.choix}`).sort()).toEqual(
+    [`${films.dune}:oui`, `${films.dune2}:non`, `${films.inception}:non`].sort(),
+  );
+});
+
 test('un petit glissement ne vote pas et la carte revient', async ({ page, request }) => {
   const id = await creerSeance(request);
   await ouvrir(page, id, 'Alex');

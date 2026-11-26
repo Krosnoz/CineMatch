@@ -121,10 +121,12 @@ export function App() {
     return () => clearTimeout(minuterie);
   }, [toast]);
 
+  const ordre = detail ? detail.films.flatMap((f) => classement.filter((c) => c.id === f.id)) : [];
   const aVote = (filmId: number) => detail?.votes.some((v) => v.filmId === filmId && v.prenom === moi);
-  const filmAuGuichet = classement.find((f) => f.id === choisi) ?? classement.find((f) => !aVote(f.id)) ?? classement[0];
+  const filmAuGuichet = ordre.find((f) => f.id === choisi) ?? ordre.find((f) => !aVote(f.id)) ?? ordre[0];
+  const decaler = (pas: number) => ordre[(ordre.findIndex((f) => f.id === filmAuGuichet?.id) + pas + ordre.length) % ordre.length];
   const avisCourant = detail?.votes.find((v) => v.filmId === filmAuGuichet?.id && v.prenom === moi)?.choix;
-  const restants = moi ? classement.filter((f) => !aVote(f.id)).length : 0;
+  const restants = moi ? ordre.filter((f) => !aVote(f.id)).length : 0;
 
   const tousLesAvis = classement.length > 0 && classement.every((f) => f.nombre === detail?.membres.length);
   const enTete = classement.length === 1 || (classement.length > 1 && classement[0].score > classement[1].score);
@@ -143,10 +145,7 @@ export function App() {
       const verdict = verdicts.find((v) => v.touche === e.key.toLowerCase());
       if (verdict) voter(verdict.choix);
       const pas = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
-      if (pas && filmAuGuichet) {
-        const i = classement.findIndex((f) => f.id === filmAuGuichet.id);
-        setChoisi(classement[(i + pas + classement.length) % classement.length].id);
-      }
+      if (pas && filmAuGuichet) setChoisi(decaler(pas).id);
     };
     const suivre = () => {
       const id = idDuHash();
@@ -179,7 +178,7 @@ export function App() {
     const autres = (v: Vote) => !(v.filmId === film.id && v.prenom === moi);
     const ancien = detail.votes.filter((v) => !autres(v));
     setDetail((d) => d && { ...d, votes: [...d.votes.filter(autres), { filmId: film.id, prenom: moi, choix }] });
-    setChoisi(null);
+    setChoisi(decaler(1).id);
     votesEnvoyes.current += 1;
     api(`/soirees/${detail.id}/films/${film.id}/vote`, 'PUT', { prenom: moi, choix }).catch((e) => {
       setDetail((d) => d && { ...d, votes: [...d.votes.filter(autres), ...ancien] });
@@ -411,8 +410,10 @@ export function App() {
             !ouverture &&
             (moi ? (
               <Cartes
-                classement={classement}
+                films={ordre}
                 film={filmAuGuichet}
+                suivant={ordre.length > 1 ? decaler(1) : undefined}
+                rang={classement.findIndex((f) => f.id === filmAuGuichet?.id) + 1}
                 avis={avisCourant}
                 moi={moi}
                 votes={detail.votes}
